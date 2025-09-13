@@ -4,6 +4,7 @@ import csv
 import os
 import argparse
 import logging
+import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple
 
@@ -151,6 +152,7 @@ def main(word_level: str, workers: int) -> None:
 
         logging.info("Submitted %d fetch tasks", submitted)
 
+        notes = []
         for fut in as_completed(futures):
             word, definition_url, voice_url = futures[fut]
             try:
@@ -168,6 +170,11 @@ def main(word_level: str, workers: int) -> None:
             success += 1
             front = build_front_field(word, definition_url, voice_url)
             note = genanki.Note(model=model, fields=[front, back])
+            notes.append(note)
+
+        random.shuffle(notes)
+
+        for note in notes:
             deck.add_note(note)
 
     # Write .apkg
