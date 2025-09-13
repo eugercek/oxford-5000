@@ -100,11 +100,14 @@ def ensure_output_dir(path: str) -> None:
         os.makedirs(path, exist_ok=True)
 
 
-def main(word_level: str, workers: int) -> None:
-    input_csv = os.path.abspath(os.path.join(os.path.dirname(__file__), "oxford-5k.csv"))
+def main(word_level: str, workers: int,  csv_file_name, output_file_name) -> None:
+    input_csv = os.path.abspath(os.path.join(os.path.dirname(__file__), csv_file_name))
     output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "result"))
     ensure_output_dir(output_dir)
-    output_apkg = os.path.join(output_dir, f"oxford-5000-words-{word_level}.apkg")
+    if output_file_name:
+        output_apkg = os.path.join(output_dir, output_file_name)
+    else:
+        output_apkg = os.path.join(output_dir, f"oxford-5000-words-{word_level}.apkg")
     # No media packaging; audio will stream from voice_url
 
     total = 0
@@ -139,8 +142,9 @@ def main(word_level: str, workers: int) -> None:
             voice_url = (row.get("voice_url") or "").strip()
             logging.info("Row %d: %s", total, word)
 
-            if level != word_level:
+            if word_level != "none" and level != word_level:
                 continue
+
             if not word or not definition_url:
                 continue
 
@@ -191,9 +195,11 @@ if __name__ == "__main__":
     )
 
     parser = argparse.ArgumentParser(description="Generate Anki deck filtered by level with concurrency")
-    parser.add_argument("--word-level", required=True, type=str.lower, choices=["a1","a2","b1","b2","c1"], help="Word level to include")
+    parser.add_argument("--word-level", required=True, type=str.lower, choices=["a1","a2","b1","b2","c1", "none"], help="Word level to include")
     parser.add_argument("--workers", type=int, default=8, help="Number of parallel workers (default: 8)")
+    parser.add_argument("--csv-file", type=str, default="oxford-5k.csv", help="Which csv to parse")
+    parser.add_argument("--output-file-name", type=str, help="Output file name", default=None)
     args = parser.parse_args()
-    main(word_level=args.word_level, workers=args.workers)
+    main(word_level=args.word_level, workers=args.workers, csv_file_name=args.csv_file, output_file_name=args.output_file_name)
 
 

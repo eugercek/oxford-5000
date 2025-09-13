@@ -11,6 +11,8 @@ python main.py --word-level a2
 python main.py --word-level b1
 python main.py --word-level b2
 python main.py --word-level c1
+
+python main.py --word-level none --csv-file oxford-phrase.csv --output-file-name oxford-5000-phrase.apkg
 ```
 
 
