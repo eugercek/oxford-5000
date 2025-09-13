@@ -93,7 +93,7 @@ def ensure_output_dir(path: str) -> None:
 
 
 def main(word_level: str) -> None:
-    input_csv = os.path.abspath(os.path.join(os.path.dirname(__file__), "data.csv"))
+    input_csv = os.path.abspath(os.path.join(os.path.dirname(__file__), "oxford-5k.csv"))
     output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "result"))
     ensure_output_dir(output_dir)
     output_tsv = os.path.join(output_dir, "anki.tsv")
