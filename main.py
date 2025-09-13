@@ -4,6 +4,7 @@ import csv
 import os
 import argparse
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple
 
 from oxford import Word, WordNotFound
@@ -20,7 +21,7 @@ def extract_id_from_definition_url(definition_url: str) -> str:
     return definition_url.rstrip("/").split("/")[-1]
 
 
-def fetch_meaning_and_examples(definition_id: str, example_count: int = EXAMPLE_COUNT) -> Tuple[str, List[str]]:
+def fetch_meaning_and_examples(definition_id: str, word: str, example_count: int = EXAMPLE_COUNT) -> Tuple[str, List[str]]:
     """Fetch the first meaning and up to example_count examples for an entry id.
 
     example_count defaults to EXAMPLE_COUNT (5)."""
@@ -33,18 +34,23 @@ def fetch_meaning_and_examples(definition_id: str, example_count: int = EXAMPLE_
 
     # If fewer than desired examples, try to pull extra examples from the full definition structure
     if len(examples) < example_count:
-        full = Word.definition_full() or []
-        for group in full:
-            for d in group.get("definitions", []):
-                for ex in d.get("extra_example", []) or []:
-                    examples.append(ex)
+        try:
+            full = Word.definition_full() or []
+            for group in full:
+                for d in group.get("definitions", []):
+                    for ex in d.get("extra_example", []) or []:
+                        examples.append(ex)
+                        if len(examples) >= example_count:
+                            break
                     if len(examples) >= example_count:
                         break
                 if len(examples) >= example_count:
                     break
-            if len(examples) >= example_count:
-                break
+        except Exception:
+            # Some entries have different page structures; ignore and proceed with what we have
+            pass
 
+    logging.info("Finished fetching %s", word)
     if len(examples) < example_count:
         return meaning, examples
 
@@ -93,11 +99,10 @@ def ensure_output_dir(path: str) -> None:
         os.makedirs(path, exist_ok=True)
 
 
-def main(word_level: str) -> None:
+def main(word_level: str, workers: int) -> None:
     input_csv = os.path.abspath(os.path.join(os.path.dirname(__file__), "oxford-5k.csv"))
     output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "result"))
     ensure_output_dir(output_dir)
-    output_tsv = os.path.join(output_dir, "anki.tsv")
     output_apkg = os.path.join(output_dir, f"oxford-5000-words-{word_level}.apkg")
     # No media packaging; audio will stream from voice_url
 
@@ -121,12 +126,10 @@ def main(word_level: str) -> None:
 
     deck = genanki.Deck(2059400110, f"Words Deck ({word_level.upper()})")
 
-    with open(input_csv, "r", encoding="utf-8") as f_in, open(
-        output_tsv, "w", encoding="utf-8", newline=""
-    ) as f_out:
+    submitted = 0
+    futures = {}
+    with open(input_csv, "r", encoding="utf-8") as f_in, ThreadPoolExecutor(max_workers=workers) as executor:
         reader = csv.DictReader(f_in)
-        writer = csv.writer(f_out, delimiter="\t")
-
         for row in reader:
             total += 1
             word = (row.get("word") or "").strip()
@@ -137,48 +140,53 @@ def main(word_level: str) -> None:
 
             if level != word_level:
                 continue
-
             if not word or not definition_url:
                 continue
 
             entry_id = extract_id_from_definition_url(definition_url)
+            fut = executor.submit(fetch_meaning_and_examples, entry_id, word, EXAMPLE_COUNT)
 
+            futures[fut] = (word, definition_url, voice_url)
+            submitted += 1
+
+        logging.info("Submitted %d fetch tasks", submitted)
+
+        for fut in as_completed(futures):
+            word, definition_url, voice_url = futures[fut]
             try:
-                meaning, examples = fetch_meaning_and_examples(entry_id, EXAMPLE_COUNT)
+                meaning, examples = fut.result()
             except WordNotFound:
-                # Skip entries not found
+                logging.warning("Not found: %s", word)
                 continue
-            except Exception:
-                # Network/parse issues: skip and continue
+            except Exception as e:
+                logging.warning("Failed: %s (%s)", word, e)
                 continue
 
             back = build_back_field(meaning, examples)
             if not back:
                 continue
-
-            writer.writerow([word, back])
             success += 1
-
-            # Prepare front: word + link + streaming audio tag
             front = build_front_field(word, definition_url, voice_url)
-
-            # Add to Anki deck
             note = genanki.Note(model=model, fields=[front, back])
             deck.add_note(note)
 
     # Write .apkg
     genanki.Package(deck).write_to_file(output_apkg)
 
-    print(f"Wrote {success}/{total} cards to {output_tsv} and {output_apkg}")
+    print(f"Wrote {success}/{total} cards to {output_apkg}")
 
 
 if __name__ == "__main__":
-    logging.basicConfig()
-    logging.getLogger().setLevel(logging.INFO)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(levelname)s|%(asctime)s %(message)s",
+        datefmt="%H:%M:%S",
+    )
 
-    parser = argparse.ArgumentParser(description="Generate Anki deck from data.csv filtered by level")
+    parser = argparse.ArgumentParser(description="Generate Anki deck filtered by level with concurrency")
     parser.add_argument("--word-level", required=True, type=str.lower, choices=["a1","a2","b1","b2","c1"], help="Word level to include")
+    parser.add_argument("--workers", type=int, default=8, help="Number of parallel workers (default: 8)")
     args = parser.parse_args()
-    main(word_level=args.word_level)
+    main(word_level=args.word_level, workers=args.workers)
 
 
