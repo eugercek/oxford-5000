@@ -2,6 +2,7 @@
 
 import csv
 import os
+import argparse
 from typing import List, Tuple
 
 from oxford import Word, WordNotFound
@@ -91,12 +92,12 @@ def ensure_output_dir(path: str) -> None:
         os.makedirs(path, exist_ok=True)
 
 
-def main() -> None:
+def main(word_level: str) -> None:
     input_csv = os.path.abspath(os.path.join(os.path.dirname(__file__), "data.csv"))
     output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "result"))
     ensure_output_dir(output_dir)
     output_tsv = os.path.join(output_dir, "anki.tsv")
-    output_apkg = os.path.join(output_dir, "anki.apkg")
+    output_apkg = os.path.join(output_dir, f"oxford-5000-words-{word_level}.apkg")
     # No media packaging; audio will stream from voice_url
 
     total = 0
@@ -117,7 +118,7 @@ def main() -> None:
         css="",
     )
 
-    deck = genanki.Deck(2059400110, "Words Deck")
+    deck = genanki.Deck(2059400110, f"Words Deck ({word_level.upper()})")
 
     with open(input_csv, "r", encoding="utf-8") as f_in, open(
         output_tsv, "w", encoding="utf-8", newline=""
@@ -128,8 +129,12 @@ def main() -> None:
         for row in reader:
             total += 1
             word = (row.get("word") or "").strip()
+            level = (row.get("level") or "").strip().lower()
             definition_url = (row.get("definition_url") or "").strip()
             voice_url = (row.get("voice_url") or "").strip()
+
+            if level != word_level:
+                continue
 
             if not word or not definition_url:
                 continue
@@ -166,6 +171,9 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Generate Anki deck from data.csv filtered by level")
+    parser.add_argument("--word-level", required=True, type=str.lower, choices=["a1","a2","b1","b2","c1"], help="Word level to include")
+    args = parser.parse_args()
+    main(word_level=args.word_level)
 
 
