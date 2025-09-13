@@ -6,6 +6,8 @@ from typing import List, Tuple
 
 from oxford import Word, WordNotFound
 import genanki
+EXAMPLE_COUNT = 5  # Default number of examples per card (configurable)
+
 
 
 def extract_id_from_definition_url(definition_url: str) -> str:
@@ -16,8 +18,10 @@ def extract_id_from_definition_url(definition_url: str) -> str:
     return definition_url.rstrip("/").split("/")[-1]
 
 
-def fetch_meaning_and_examples(definition_id: str) -> Tuple[str, List[str]]:
-    """Fetch the first meaning and up to 3 examples for an entry id."""
+def fetch_meaning_and_examples(definition_id: str, example_count: int = EXAMPLE_COUNT) -> Tuple[str, List[str]]:
+    """Fetch the first meaning and up to example_count examples for an entry id.
+
+    example_count defaults to EXAMPLE_COUNT (5)."""
     Word.get(definition_id)
 
     definitions = Word.definitions() or []
@@ -25,21 +29,24 @@ def fetch_meaning_and_examples(definition_id: str) -> Tuple[str, List[str]]:
 
     examples = Word.examples() or []
 
-    # If fewer than 3 examples, try to pull extra examples from the full definition structure
-    if len(examples) < 3:
+    # If fewer than desired examples, try to pull extra examples from the full definition structure
+    if len(examples) < example_count:
         full = Word.definition_full() or []
         for group in full:
             for d in group.get("definitions", []):
                 for ex in d.get("extra_example", []) or []:
                     examples.append(ex)
-                    if len(examples) >= 3:
+                    if len(examples) >= example_count:
                         break
-                if len(examples) >= 3:
+                if len(examples) >= example_count:
                     break
-            if len(examples) >= 3:
+            if len(examples) >= example_count:
                 break
 
-    return meaning, examples[:3]
+    if len(examples) < example_count:
+        return meaning, examples
+
+    return meaning, examples[:example_count]
 
 
 def build_back_field(meaning: str, examples: List[str]) -> str:
@@ -130,7 +137,7 @@ def main() -> None:
             entry_id = extract_id_from_definition_url(definition_url)
 
             try:
-                meaning, examples = fetch_meaning_and_examples(entry_id)
+                meaning, examples = fetch_meaning_and_examples(entry_id, EXAMPLE_COUNT)
             except WordNotFound:
                 # Skip entries not found
                 continue
