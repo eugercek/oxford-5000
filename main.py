@@ -3,6 +3,7 @@
 import csv
 import os
 import argparse
+import logging
 from typing import List, Tuple
 
 from oxford import Word, WordNotFound
@@ -132,6 +133,7 @@ def main(word_level: str) -> None:
             level = (row.get("level") or "").strip().lower()
             definition_url = (row.get("definition_url") or "").strip()
             voice_url = (row.get("voice_url") or "").strip()
+            logging.info("Row %d: %s", total, word)
 
             if level != word_level:
                 continue
@@ -171,6 +173,9 @@ def main(word_level: str) -> None:
 
 
 if __name__ == "__main__":
+    logging.basicConfig()
+    logging.getLogger().setLevel(logging.INFO)
+
     parser = argparse.ArgumentParser(description="Generate Anki deck from data.csv filtered by level")
     parser.add_argument("--word-level", required=True, type=str.lower, choices=["a1","a2","b1","b2","c1"], help="Word level to include")
     args = parser.parse_args()
